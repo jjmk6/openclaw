@@ -533,6 +533,7 @@ describeLive("gateway live (Codex harness)", () => {
             "I couldn’t get `codex models` from the CLI because the sandbox blocks the namespace setup it needs",
             "I can only see the current session model from this environment",
             "Available in this session:",
+            "Available models in this session:",
             "Available models in this environment:",
             "Current model:",
             "Current model: `codex/",
