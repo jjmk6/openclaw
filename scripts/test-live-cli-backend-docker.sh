@@ -17,6 +17,7 @@ TEMP_DIRS=()
 DOCKER_USER="${OPENCLAW_DOCKER_USER:-node}"
 DOCKER_HOME_MOUNT=()
 DOCKER_EXTRA_ENV_FILES=()
+DOCKER_AUTH_PRESTAGED=0
 
 if [[ -z "$CLI_PROVIDER" || "$CLI_PROVIDER" == "$CLI_MODEL" ]]; then
   CLI_PROVIDER="$DEFAULT_PROVIDER"
@@ -185,6 +186,11 @@ if ((${#AUTH_FILES[@]} > 0)); then
   AUTH_FILES_CSV="$(openclaw_live_join_csv "${AUTH_FILES[@]}")"
 fi
 
+if [[ -n "${DOCKER_HOME_DIR:-}" ]]; then
+  openclaw_live_stage_auth_into_home "$DOCKER_HOME_DIR" "${AUTH_DIRS[@]}" --files "${AUTH_FILES[@]}"
+  DOCKER_AUTH_PRESTAGED=1
+fi
+
 EXTERNAL_AUTH_MOUNTS=()
 if ((${#AUTH_DIRS[@]} > 0)); then
   for auth_dir in "${AUTH_DIRS[@]}"; do
@@ -217,27 +223,29 @@ export npm_config_cache="$NPM_CONFIG_CACHE"
 mkdir -p "$NPM_CONFIG_PREFIX" "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE"
 chmod 700 "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE" || true
 export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-IFS=',' read -r -a auth_dirs <<<"${OPENCLAW_DOCKER_AUTH_DIRS_RESOLVED:-}"
-IFS=',' read -r -a auth_files <<<"${OPENCLAW_DOCKER_AUTH_FILES_RESOLVED:-}"
-if ((${#auth_dirs[@]} > 0)); then
-  for auth_dir in "${auth_dirs[@]}"; do
-    [ -n "$auth_dir" ] || continue
-    if [ -d "/host-auth/$auth_dir" ]; then
-      mkdir -p "$HOME/$auth_dir"
-      cp -R "/host-auth/$auth_dir/." "$HOME/$auth_dir"
-      chmod -R u+rwX "$HOME/$auth_dir" || true
-    fi
-  done
-fi
-if ((${#auth_files[@]} > 0)); then
-  for auth_file in "${auth_files[@]}"; do
-    [ -n "$auth_file" ] || continue
-    if [ -f "/host-auth-files/$auth_file" ]; then
-      mkdir -p "$(dirname "$HOME/$auth_file")"
-      cp "/host-auth-files/$auth_file" "$HOME/$auth_file"
-      chmod u+rw "$HOME/$auth_file" || true
-    fi
-  done
+if [ "${OPENCLAW_DOCKER_AUTH_PRESTAGED:-0}" != "1" ]; then
+  IFS=',' read -r -a auth_dirs <<<"${OPENCLAW_DOCKER_AUTH_DIRS_RESOLVED:-}"
+  IFS=',' read -r -a auth_files <<<"${OPENCLAW_DOCKER_AUTH_FILES_RESOLVED:-}"
+  if ((${#auth_dirs[@]} > 0)); then
+    for auth_dir in "${auth_dirs[@]}"; do
+      [ -n "$auth_dir" ] || continue
+      if [ -d "/host-auth/$auth_dir" ]; then
+        mkdir -p "$HOME/$auth_dir"
+        cp -R "/host-auth/$auth_dir/." "$HOME/$auth_dir"
+        chmod -R u+rwX "$HOME/$auth_dir" || true
+      fi
+    done
+  fi
+  if ((${#auth_files[@]} > 0)); then
+    for auth_file in "${auth_files[@]}"; do
+      [ -n "$auth_file" ] || continue
+      if [ -f "/host-auth-files/$auth_file" ]; then
+        mkdir -p "$(dirname "$HOME/$auth_file")"
+        cp "/host-auth-files/$auth_file" "$HOME/$auth_file"
+        chmod u+rw "$HOME/$auth_file" || true
+      fi
+    done
+  fi
 fi
 provider="${OPENCLAW_DOCKER_CLI_BACKEND_PROVIDER:-claude-cli}"
 default_command="${OPENCLAW_DOCKER_CLI_BACKEND_COMMAND_DEFAULT:-}"
@@ -399,6 +407,7 @@ docker run --rm -t \
   -e NODE_OPTIONS=--disable-warning=ExperimentalWarning \
   -e OPENCLAW_SKIP_CHANNELS=1 \
   -e OPENCLAW_VITEST_FS_MODULE_CACHE=0 \
+  -e OPENCLAW_DOCKER_AUTH_PRESTAGED="$DOCKER_AUTH_PRESTAGED" \
   -e OPENCLAW_DOCKER_AUTH_DIRS_RESOLVED="$AUTH_DIRS_CSV" \
   -e OPENCLAW_DOCKER_AUTH_FILES_RESOLVED="$AUTH_FILES_CSV" \
   -e OPENCLAW_DOCKER_CLI_BACKEND_PROVIDER="$CLI_PROVIDER" \

@@ -13,6 +13,7 @@ TEMP_DIRS=()
 DOCKER_USER="${OPENCLAW_DOCKER_USER:-node}"
 DOCKER_HOME_MOUNT=()
 DOCKER_EXTRA_ENV_FILES=()
+DOCKER_AUTH_PRESTAGED=0
 
 case "$CODEX_HARNESS_AUTH_MODE" in
   codex-auth | api-key)
@@ -79,6 +80,11 @@ if ((${#AUTH_FILES[@]} > 0)); then
   AUTH_FILES_CSV="$(openclaw_live_join_csv "${AUTH_FILES[@]}")"
 fi
 
+if [[ -n "${DOCKER_HOME_DIR:-}" ]]; then
+  openclaw_live_stage_auth_into_home "$DOCKER_HOME_DIR" --files "${AUTH_FILES[@]}"
+  DOCKER_AUTH_PRESTAGED=1
+fi
+
 EXTERNAL_AUTH_MOUNTS=()
 if ((${#AUTH_FILES[@]} > 0)); then
   for auth_file in "${AUTH_FILES[@]}"; do
@@ -122,16 +128,18 @@ fi
 mkdir -p "$NPM_CONFIG_PREFIX" "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE"
 chmod 700 "$XDG_CACHE_HOME" "$COREPACK_HOME" "$NPM_CONFIG_CACHE" || true
 export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-IFS=',' read -r -a auth_files <<<"${OPENCLAW_DOCKER_AUTH_FILES_RESOLVED:-}"
-if ((${#auth_files[@]} > 0)); then
-  for auth_file in "${auth_files[@]}"; do
-    [ -n "$auth_file" ] || continue
-    if [ -f "/host-auth-files/$auth_file" ]; then
-      mkdir -p "$(dirname "$HOME/$auth_file")"
-      cp "/host-auth-files/$auth_file" "$HOME/$auth_file"
-      chmod u+rw "$HOME/$auth_file" || true
-    fi
-  done
+if [ "${OPENCLAW_DOCKER_AUTH_PRESTAGED:-0}" != "1" ]; then
+  IFS=',' read -r -a auth_files <<<"${OPENCLAW_DOCKER_AUTH_FILES_RESOLVED:-}"
+  if ((${#auth_files[@]} > 0)); then
+    for auth_file in "${auth_files[@]}"; do
+      [ -n "$auth_file" ] || continue
+      if [ -f "/host-auth-files/$auth_file" ]; then
+        mkdir -p "$(dirname "$HOME/$auth_file")"
+        cp "/host-auth-files/$auth_file" "$HOME/$auth_file"
+        chmod u+rw "$HOME/$auth_file" || true
+      fi
+    done
+  fi
 fi
 if [ "${OPENCLAW_LIVE_CODEX_HARNESS_AUTH:-codex-auth}" != "api-key" ] && [ ! -s "$HOME/.codex/auth.json" ]; then
   echo "ERROR: missing ~/.codex/auth.json for Codex harness live test." >&2
@@ -177,6 +185,7 @@ docker run --rm -t \
   -e HOME=/home/node \
   -e NODE_OPTIONS=--disable-warning=ExperimentalWarning \
   -e OPENCLAW_AGENT_HARNESS_FALLBACK=none \
+  -e OPENCLAW_DOCKER_AUTH_PRESTAGED="$DOCKER_AUTH_PRESTAGED" \
   -e OPENCLAW_CODEX_APP_SERVER_BIN="${OPENCLAW_CODEX_APP_SERVER_BIN:-codex}" \
   -e OPENCLAW_DOCKER_AUTH_FILES_RESOLVED="$AUTH_FILES_CSV" \
   -e OPENCLAW_LIVE_CODEX_HARNESS_AUTH="$CODEX_HARNESS_AUTH_MODE" \

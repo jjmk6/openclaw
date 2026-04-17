@@ -162,3 +162,44 @@ openclaw_live_join_csv() {
     fi
   done
 }
+
+openclaw_live_stage_auth_into_home() {
+  local dest_home="${1:?destination home directory required}"
+  shift
+
+  local mode="dirs"
+  local relative_path source_path dest_path
+
+  mkdir -p "$dest_home"
+  chmod u+rwx "$dest_home" || true
+
+  while (($# > 0)); do
+    case "$1" in
+      --files)
+        mode="files"
+        shift
+        continue
+        ;;
+    esac
+
+    relative_path="$(openclaw_live_validate_relative_home_path "$1")" || return 1
+    source_path="$HOME/$relative_path"
+    dest_path="$dest_home/$relative_path"
+
+    if [[ "$mode" == "dirs" ]]; then
+      if [[ -d "$source_path" ]]; then
+        mkdir -p "$dest_path"
+        cp -R "$source_path"/. "$dest_path"
+        chmod -R u+rwX "$dest_path" || true
+      fi
+    else
+      if [[ -f "$source_path" ]]; then
+        mkdir -p "$(dirname "$dest_path")"
+        cp "$source_path" "$dest_path"
+        chmod u+rw "$dest_path" || true
+      fi
+    fi
+
+    shift
+  done
+}
