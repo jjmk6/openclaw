@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { resolveSessionAuthProfileOverride } from "../../agents/auth-profiles/session-override.js";
-import { isWorkspaceBootstrapPending } from "../../agents/workspace.js";
 import type { ExecToolDefaults } from "../../agents/bash-tools.js";
 import { resolveFastModeState } from "../../agents/fast-mode.js";
 import { resolveEmbeddedFullAccessState } from "../../agents/pi-embedded-runner/sandbox-info.js";
@@ -44,7 +43,7 @@ import { resolveOriginMessageProvider } from "./origin-routing.js";
 import { buildReplyPromptBodies } from "./prompt-prelude.js";
 import { resolveActiveRunQueueAction } from "./queue-policy.js";
 import { resolveQueueSettings } from "./queue/settings-runtime.js";
-import { buildBareSessionResetPrompt } from "./session-reset-prompt.js";
+import { resolveBareSessionResetPromptState } from "./session-reset-prompt.js";
 import { drainFormattedSystemEvents } from "./session-system-events.js";
 import { buildSessionStartupContextPrelude, shouldApplyStartupContext } from "./startup-context.js";
 import { resolveTypingMode } from "./typing-mode.js";
@@ -321,11 +320,16 @@ export async function runPreparedReply(
     isNewSession &&
     ((baseBodyTrimmedRaw.length === 0 && rawBodyTrimmed.length > 0) || isBareNewOrReset);
   const startupAction = /^\/reset(?:\s|$)/.test(normalizedCommandBody) ? "reset" : "new";
-  const bootstrapPending =
-    isBareSessionReset && workspaceDir ? await isWorkspaceBootstrapPending(workspaceDir) : false;
+  const bareResetPromptState =
+    isBareSessionReset && workspaceDir
+      ? await resolveBareSessionResetPromptState({
+          cfg,
+          workspaceDir,
+        })
+      : null;
   const startupContextPrelude =
     isBareSessionReset &&
-    !bootstrapPending &&
+    bareResetPromptState?.shouldPrependStartupContext !== false &&
     shouldApplyStartupContext({ cfg, action: startupAction })
       ? await buildSessionStartupContextPrelude({
           workspaceDir,
@@ -333,7 +337,7 @@ export async function runPreparedReply(
         })
       : null;
   const baseBodyFinal = isBareSessionReset
-    ? buildBareSessionResetPrompt(cfg, undefined, bootstrapPending)
+    ? (bareResetPromptState?.prompt ?? "")
     : stripPromptThinkingDirectives(baseBody);
   const envelopeOptions = resolveEnvelopeFormatOptions(cfg);
   const inboundUserContext = buildInboundUserContextPrefix(

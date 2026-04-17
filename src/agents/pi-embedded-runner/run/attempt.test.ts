@@ -220,25 +220,10 @@ describe("resolvePromptModeForSession", () => {
 });
 
 describe("shouldStripBootstrapFromEmbeddedContext", () => {
-  it("strips BOOTSTRAP.md only when a read tool is actually available", () => {
-    expect(
-      shouldStripBootstrapFromEmbeddedContext({
-        toolsEnabled: true,
-        toolNames: ["read", "write"],
-      }),
-    ).toBe(true);
-    expect(
-      shouldStripBootstrapFromEmbeddedContext({
-        toolsEnabled: true,
-        toolNames: ["write"],
-      }),
-    ).toBe(false);
-    expect(
-      shouldStripBootstrapFromEmbeddedContext({
-        toolsEnabled: false,
-        toolNames: ["read"],
-      }),
-    ).toBe(false);
+  it("never injects raw BOOTSTRAP.md into embedded system context", () => {
+    expect(shouldStripBootstrapFromEmbeddedContext({ bootstrapMode: "full" })).toBe(true);
+    expect(shouldStripBootstrapFromEmbeddedContext({ bootstrapMode: "limited" })).toBe(true);
+    expect(shouldStripBootstrapFromEmbeddedContext({ bootstrapMode: "none" })).toBe(true);
   });
 });
 

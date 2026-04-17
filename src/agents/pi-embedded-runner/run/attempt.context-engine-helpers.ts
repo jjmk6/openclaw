@@ -2,6 +2,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { MemoryCitationsMode } from "../../../config/types.memory.js";
 import type { ContextEngine, ContextEngineRuntimeContext } from "../../../context-engine/types.js";
+import type { BootstrapMode } from "../../bootstrap-mode.js";
 import { normalizeUsage, type NormalizedUsage } from "../../usage.js";
 import type { PromptCacheChange } from "../prompt-cache-observability.js";
 import type { EmbeddedRunAttemptResult } from "./types.js";
@@ -19,7 +20,7 @@ export async function resolveAttemptBootstrapContext<
   contextInjectionMode: "always" | "continuation-skip";
   bootstrapContextMode?: string;
   bootstrapContextRunKind?: string;
-  workspaceBootstrapPending?: boolean;
+  bootstrapMode?: BootstrapMode;
   sessionFile: string;
   hasCompletedBootstrapTurn: (sessionFile: string) => Promise<boolean>;
   resolveBootstrapContextForRun: () => Promise<TContext>;
@@ -30,14 +31,15 @@ export async function resolveAttemptBootstrapContext<
   }
 > {
   const isContinuationTurn =
-    !params.workspaceBootstrapPending &&
+    params.bootstrapMode !== "full" &&
     params.contextInjectionMode === "continuation-skip" &&
     params.bootstrapContextRunKind !== "heartbeat" &&
     (await params.hasCompletedBootstrapTurn(params.sessionFile));
   const shouldRecordCompletedBootstrapTurn =
     !isContinuationTurn &&
     params.bootstrapContextMode !== "lightweight" &&
-    params.bootstrapContextRunKind !== "heartbeat";
+    params.bootstrapContextRunKind !== "heartbeat" &&
+    params.bootstrapMode === "full";
 
   const context = isContinuationTurn
     ? ({ bootstrapFiles: [], contextFiles: [] } as unknown as TContext)

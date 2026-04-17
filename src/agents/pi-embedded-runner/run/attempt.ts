@@ -55,6 +55,7 @@ import {
   resolveBootstrapContextForRun,
   resolveContextInjectionMode,
 } from "../../bootstrap-files.js";
+import { resolveBootstrapMode } from "../../bootstrap-mode.js";
 import { createCacheTrace } from "../../cache-trace.js";
 import {
   listChannelSupportedActions,
@@ -315,11 +316,10 @@ export function resolveUnknownToolGuardThreshold(loopDetection?: {
   return UNKNOWN_TOOL_THRESHOLD;
 }
 
-export function shouldStripBootstrapFromEmbeddedContext(params: {
-  toolsEnabled: boolean;
-  toolNames: readonly string[];
+export function shouldStripBootstrapFromEmbeddedContext(_params: {
+  bootstrapMode: "full" | "limited" | "none";
 }): boolean {
-  return params.toolsEnabled && params.toolNames.includes("read");
+  return true;
 }
 
 function summarizeMessagePayload(msg: AgentMessage): { textChars: number; imageBlocks: number } {
@@ -528,9 +528,18 @@ export async function runEmbeddedAttempt(
           return allTools;
         })();
     const toolsEnabled = supportsModelTools(params.model);
+    const bootstrapRunKind = params.bootstrapContextRunKind ?? "default";
+    const bootstrapHasFileAccess = toolsEnabled && toolsRaw.some((tool) => tool.name === "read");
+    const bootstrapMode = resolveBootstrapMode({
+      bootstrapPending: workspaceBootstrapPending,
+      runKind: bootstrapRunKind,
+      isInteractiveUserFacing: params.trigger === "user" || params.trigger === "manual",
+      isPrimaryRun: !isSubagentSessionKey(params.sessionKey),
+      isCanonicalWorkspace: effectiveWorkspace === resolvedWorkspace,
+      hasBootstrapFileAccess: bootstrapHasFileAccess,
+    });
     const shouldStripBootstrapFromContext = shouldStripBootstrapFromEmbeddedContext({
-      toolsEnabled,
-      toolNames: toolsRaw.map((tool) => tool.name),
+      bootstrapMode,
     });
     const {
       bootstrapFiles: hookAdjustedBootstrapFiles,
@@ -539,8 +548,8 @@ export async function runEmbeddedAttempt(
     } = await resolveAttemptBootstrapContext({
       contextInjectionMode,
       bootstrapContextMode: params.bootstrapContextMode,
-      bootstrapContextRunKind: params.bootstrapContextRunKind,
-      workspaceBootstrapPending,
+      bootstrapContextRunKind: bootstrapRunKind,
+      bootstrapMode,
       sessionFile: params.sessionFile,
       hasCompletedBootstrapTurn,
       resolveBootstrapContextForRun: async () =>
@@ -886,7 +895,7 @@ export async function runEmbeddedAttempt(
     const systemPromptOverride = createSystemPromptOverride(appendPrompt);
     let systemPromptText = systemPromptOverride();
     const userPromptPrefixText = buildAgentUserPromptPrefix({
-      bootstrapPending: workspaceBootstrapPending,
+      bootstrapMode,
     });
 
     let sessionManager: ReturnType<typeof guardSessionManager> | undefined;

@@ -15,7 +15,7 @@ async function resolveBootstrapContext(params: {
   contextInjectionMode?: "always" | "continuation-skip";
   bootstrapContextMode?: string;
   bootstrapContextRunKind?: string;
-  workspaceBootstrapPending?: boolean;
+  bootstrapMode?: "full" | "limited" | "none";
   completed?: boolean;
   resolver?: () => Promise<{ bootstrapFiles: unknown[]; contextFiles: unknown[] }>;
 }) {
@@ -31,7 +31,7 @@ async function resolveBootstrapContext(params: {
     contextInjectionMode: params.contextInjectionMode ?? "always",
     bootstrapContextMode: params.bootstrapContextMode ?? "full",
     bootstrapContextRunKind: params.bootstrapContextRunKind ?? "default",
-    workspaceBootstrapPending: params.workspaceBootstrapPending,
+    bootstrapMode: params.bootstrapMode ?? "none",
     sessionFile: "/tmp/session.jsonl",
     hasCompletedBootstrapTurn,
     resolveBootstrapContextForRun,
@@ -85,7 +85,7 @@ describe("embedded attempt context injection", () => {
 
     const { result, hasCompletedBootstrapTurn } = await resolveBootstrapContext({
       contextInjectionMode: "continuation-skip",
-      workspaceBootstrapPending: true,
+      bootstrapMode: "full",
       completed: true,
       resolver,
     });
@@ -150,6 +150,7 @@ describe("embedded attempt context injection", () => {
     const { result } = await resolveBootstrapContext({
       bootstrapContextMode: "full",
       bootstrapContextRunKind: "default",
+      bootstrapMode: "full",
       resolver,
     });
 
@@ -161,8 +162,23 @@ describe("embedded attempt context injection", () => {
     const { result } = await resolveBootstrapContext({
       bootstrapContextMode: "lightweight",
       bootstrapContextRunKind: "heartbeat",
+      bootstrapMode: "none",
     });
 
+    expect(result.shouldRecordCompletedBootstrapTurn).toBe(false);
+  });
+
+  it("allows continuation skip again for limited bootstrap mode", async () => {
+    const { result, hasCompletedBootstrapTurn, resolveBootstrapContextForRun } =
+      await resolveBootstrapContext({
+        contextInjectionMode: "continuation-skip",
+        bootstrapMode: "limited",
+        completed: true,
+      });
+
+    expect(result.isContinuationTurn).toBe(true);
+    expect(hasCompletedBootstrapTurn).toHaveBeenCalledWith("/tmp/session.jsonl");
+    expect(resolveBootstrapContextForRun).not.toHaveBeenCalled();
     expect(result.shouldRecordCompletedBootstrapTurn).toBe(false);
   });
 

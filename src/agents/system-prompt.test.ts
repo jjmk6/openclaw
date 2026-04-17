@@ -425,15 +425,14 @@ describe("buildAgentSystemPrompt", () => {
   });
 
   it("adds bootstrap-specific prelude text to the user prompt prefix when bootstrap is pending", () => {
-    const promptPrefix = buildAgentUserPromptPrefix({ bootstrapPending: true });
+    const promptPrefix = buildAgentUserPromptPrefix({ bootstrapMode: "full" });
 
     expect(promptPrefix).toContain("[Bootstrap pending]");
-    expect(promptPrefix).toContain(
-      "Before producing any user-visible reply, you MUST read BOOTSTRAP.md from the workspace",
-    );
-    expect(promptPrefix).toContain(
-      "Do not greet the user, offer help, answer the message, or reply normally",
-    );
+    expect(promptPrefix).toContain("Please read BOOTSTRAP.md from the workspace");
+    expect(promptPrefix).toContain("If this run can complete the BOOTSTRAP.md workflow, do so.");
+    expect(promptPrefix).toContain("explain the blocker briefly");
+    expect(promptPrefix).toContain("offer the simplest next step");
+    expect(promptPrefix).toContain("Do not use a generic first greeting or reply normally");
     expect(promptPrefix).toContain(
       "Your first user-visible reply for a bootstrap-pending workspace must follow BOOTSTRAP.md",
     );
@@ -845,6 +844,35 @@ describe("buildAgentSystemPrompt", () => {
 
     expect(prompt).toContain("## Reactions");
     expect(prompt).toContain("Reactions are enabled for Telegram in MINIMAL mode.");
+  });
+});
+
+describe("buildAgentUserPromptPrefix", () => {
+  it("uses friendly full bootstrap wording that is truthful about completion blockers", () => {
+    const prompt = buildAgentUserPromptPrefix({ bootstrapMode: "full" });
+
+    expect(prompt).toContain("[Bootstrap pending]");
+    expect(prompt).toContain("Please read BOOTSTRAP.md");
+    expect(prompt).toContain("If this run can complete the BOOTSTRAP.md workflow, do so.");
+    expect(prompt).toContain("explain the blocker briefly");
+    expect(prompt).toContain("offer the simplest next step");
+    expect(prompt).toContain("Do not pretend bootstrap is complete when it is not.");
+    expect(prompt).toContain("must follow BOOTSTRAP.md, not a generic greeting");
+  });
+
+  it("uses limited bootstrap wording for constrained user-facing runs", () => {
+    const prompt = buildAgentUserPromptPrefix({ bootstrapMode: "limited" });
+
+    expect(prompt).toContain("[Bootstrap pending]");
+    expect(prompt).toContain("cannot safely complete the full BOOTSTRAP.md workflow here");
+    expect(prompt).toContain("Do not claim bootstrap is complete");
+    expect(prompt).toContain("do not use a generic first greeting");
+    expect(prompt).toContain("switching to a primary interactive run with normal workspace access");
+  });
+
+  it("returns nothing when bootstrap is not pending", () => {
+    expect(buildAgentUserPromptPrefix({ bootstrapMode: "none" })).toBeUndefined();
+    expect(buildAgentUserPromptPrefix({})).toBeUndefined();
   });
 });
 

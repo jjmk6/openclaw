@@ -1098,6 +1098,145 @@ describe("gateway agent handler", () => {
     });
   });
 
+  it("uses shared bootstrap reset wording for bare /new when workspace bootstrap is pending", async () => {
+    await withTempDir({ prefix: "openclaw-gateway-reset-bootstrap-" }, async (workspaceDir) => {
+      await fs.writeFile(`${workspaceDir}/BOOTSTRAP.md`, "bootstrap ritual", "utf-8");
+      mocks.loadConfigReturn = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      };
+      mockSessionResetSuccess({ reason: "new" });
+      primeMainAgentRun({ sessionId: "reset-session-id", cfg: mocks.loadConfigReturn });
+
+      await invokeAgent(
+        {
+          message: "/new",
+          sessionKey: "agent:main:main",
+          idempotencyKey: "test-idem-new-bootstrap-pending",
+        },
+        {
+          reqId: "4-bootstrap",
+          client: { connect: { scopes: ["operator.admin"] } } as AgentHandlerArgs["client"],
+        },
+      );
+
+      await waitForAssertion(() => expect(mocks.agentCommand).toHaveBeenCalled());
+      const call = readLastAgentCommandCall();
+      expect(call?.message).toContain("while bootstrap is still pending for this workspace");
+      expect(call?.message).toContain("Please read BOOTSTRAP.md from the workspace now");
+      expect(call?.message).not.toContain("Today memory context");
+    });
+  });
+
+  it("resolves bare /new bootstrap state from the effective spawned workspace", async () => {
+    await withTempDir(
+      { prefix: "openclaw-gateway-reset-default-" },
+      async (defaultWorkspaceDir) => {
+        await withTempDir(
+          { prefix: "openclaw-gateway-reset-spawned-" },
+          async (spawnedWorkspaceDir) => {
+            await fs.writeFile(`${spawnedWorkspaceDir}/BOOTSTRAP.md`, "bootstrap ritual", "utf-8");
+            mocks.loadConfigReturn = {
+              agents: {
+                defaults: {
+                  workspace: defaultWorkspaceDir,
+                },
+              },
+            };
+            mockSessionResetSuccess({ reason: "new" });
+            mocks.loadSessionEntry.mockReturnValue({
+              cfg: mocks.loadConfigReturn,
+              storePath: "/tmp/sessions.json",
+              entry: {
+                sessionId: "reset-session-id",
+                updatedAt: Date.now(),
+                spawnedBy: "agent:main:controller",
+                spawnedWorkspaceDir,
+              },
+              canonicalKey: "agent:main:main",
+            });
+            mocks.updateSessionStore.mockResolvedValue(undefined);
+            mocks.agentCommand.mockResolvedValue({
+              payloads: [{ text: "ok" }],
+              meta: { durationMs: 100 },
+            });
+
+            await invokeAgent(
+              {
+                message: "/new",
+                sessionKey: "agent:main:main",
+                idempotencyKey: "test-idem-new-bootstrap-spawned-workspace",
+              },
+              {
+                reqId: "4-bootstrap-spawned",
+                client: { connect: { scopes: ["operator.admin"] } } as AgentHandlerArgs["client"],
+              },
+            );
+
+            await waitForAssertion(() => expect(mocks.agentCommand).toHaveBeenCalled());
+            const call = readLastAgentCommandCall();
+            expect(call?.message).toContain("while bootstrap is still pending for this workspace");
+            expect(call?.message).toContain(
+              "cannot safely complete the full BOOTSTRAP.md workflow here",
+            );
+            expect(call?.message).toContain("switching to a primary interactive run");
+          },
+        );
+      },
+    );
+  });
+
+  it("suppresses full bootstrap wording for bare /new on subagent sessions", async () => {
+    await withTempDir({ prefix: "openclaw-gateway-reset-subagent-" }, async (workspaceDir) => {
+      await fs.writeFile(`${workspaceDir}/BOOTSTRAP.md`, "bootstrap ritual", "utf-8");
+      mocks.loadConfigReturn = {
+        agents: {
+          defaults: {
+            workspace: workspaceDir,
+          },
+        },
+      };
+      mockSessionResetSuccess({
+        reason: "new",
+        key: "agent:main:subagent:worker",
+      });
+      mocks.loadSessionEntry.mockReturnValue({
+        cfg: mocks.loadConfigReturn,
+        storePath: "/tmp/sessions.json",
+        entry: {
+          sessionId: "reset-session-id",
+          updatedAt: Date.now(),
+        },
+        canonicalKey: "agent:main:subagent:worker",
+      });
+      mocks.updateSessionStore.mockResolvedValue(undefined);
+      mocks.agentCommand.mockResolvedValue({
+        payloads: [{ text: "ok" }],
+        meta: { durationMs: 100 },
+      });
+
+      await invokeAgent(
+        {
+          message: "/new",
+          sessionKey: "agent:main:subagent:worker",
+          idempotencyKey: "test-idem-new-subagent-bootstrap-suppressed",
+        },
+        {
+          reqId: "4-bootstrap-subagent",
+          client: { connect: { scopes: ["operator.admin"] } } as AgentHandlerArgs["client"],
+        },
+      );
+
+      await waitForAssertion(() => expect(mocks.agentCommand).toHaveBeenCalled());
+      const call = readLastAgentCommandCall();
+      expect(call?.message).toContain("Execute your Session Startup sequence now");
+      expect(call?.message).not.toContain("while bootstrap is still pending for this workspace");
+    });
+  });
+
   it("uses /reset suffix as the post-reset message and still injects timestamp", async () => {
     setupNewYorkTimeConfig("2026-01-29T01:30:00.000Z");
     mockSessionResetSuccess({ reason: "reset" });
